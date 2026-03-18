@@ -1,5 +1,5 @@
 use crate::tool::CommandDef;
-use clap::{Parser, ValueEnum};
+use clap::{ArgAction, Parser, ValueEnum};
 use std::{fmt::Display, path::PathBuf, sync::Arc, time::Duration};
 
 #[derive(ValueEnum, Clone, Debug, Default, PartialEq)]
@@ -31,7 +31,13 @@ pub enum LogLevel {
 #[derive(Parser, Debug)]
 #[command(name = "mcp-exec", version, about = "MCP server for command templates")]
 pub struct Args {
-    #[arg(short, long = "cmd", value_parser = crate::tool::parse_command_def, value_name = "NAME|\"TEMPLATE\"")]
+    #[arg(
+        short,
+        long = "cmd",
+        value_parser = crate::tool::parse_command_def,
+        value_name = "NAME|\"TEMPLATE\"",
+        env = "MCP_EXEC_COMMANDS"
+    )]
     pub commands: Vec<CommandDef>,
     #[arg(
         short = 'B',
@@ -41,58 +47,76 @@ pub struct Args {
         git,ssh,scp,rsync,tar,zip,unzip,gzip,bzip2,\
         find,xargs,env,nice,timeout,strace,ltrace,\
         ncat,netcat,nc,telnet,ftp,sftp,rbash,rsh",
-        help = "Comma-separated list of blacklisted binaries."
+        help = "Comma-separated list of blacklisted binaries.",
+        env = "MCP_EXEC_DANGEROUS"
     )]
     pub dangerous: String,
     #[arg(
         long = "allow-dangerous",
         short = 'D',
-        action = clap::ArgAction::SetTrue,
-        help = "Allow execution of blacklisted binaries. USE WITH CAUTION."
+        action = ArgAction::SetTrue,
+        help = "Allow execution of blacklisted binaries. USE WITH CAUTION.",
+        env = "MCP_EXEC_ALLOW_DANGEROUS"
     )]
     pub allow_dangerous: bool,
     #[arg(
         long = "no-validate-paths",
-        action = clap::ArgAction::SetTrue,
-        help = "Disable path traversal protection for path-like placeholders."
+        action = ArgAction::SetTrue,
+        help = "Disable path traversal protection for path-like placeholders.",
+        env = "MCP_EXEC_NO_VALIDATE_PATHS"
     )]
     pub no_validate_paths: bool,
     #[arg(
         long = "allow-missing-binaries",
-        action = clap::ArgAction::SetTrue,
-        help = "Allow commands whose binaries are not in PATH."
+        action = ArgAction::SetTrue,
+        help = "Allow commands whose binaries are not in PATH.",
+        env = "MCP_EXEC_ALLOW_MISSING_BINARIES"
     )]
     pub allow_missing_binaries: bool,
     #[arg(
         long = "base-path",
-        help = "Restrict path-like arguments to be within this base directory."
+        help = "Restrict path-like arguments to be within this base directory.",
+        env = "MCP_EXEC_BASE_PATH"
     )]
     pub base_path: Option<PathBuf>,
     #[arg(
         long = "sensitive-keys",
         default_value = "password,token,secret,key,auth,credential",
-        help = "Comma-separated list of argument names to mask in logs."
+        help = "Comma-separated list of argument names to mask in logs.",
+        env = "MCP_EXEC_SENSITIVE_KEYS"
     )]
     pub sensitive_keys: String,
     #[arg(
         long = "cmd-timeout",
         default_value = "30",
         value_parser = clap::value_parser!(u64),
-        help = "Maximum execution time for commands in seconds."
+        help = "Maximum execution time for commands in seconds.",
+        env = "MCP_EXEC_CMD_TIMEOUT_SECS"
     )]
     pub cmd_timeout_secs: u64,
     #[arg(
         long = "log-level",
         value_enum,
         default_value_t = LogLevel::Info,
-        env = "MCP_EXEC_LOG"
+        env = "MCP_EXEC_LOG_LEVEL"
     )]
     pub log_level: LogLevel,
-    #[arg(short, long = "dry-run", action = clap::ArgAction::SetTrue)]
+    #[arg(
+        short,
+        long = "dry-run",
+        action = ArgAction::SetTrue,
+        env = "MCP_EXEC_DRY_RUN"
+    )]
     pub dry_run: bool,
-    #[arg(short, long, value_enum, default_value_t = Transport::Stdio)]
+    #[arg(
+        short,
+        long,
+        value_enum,
+        default_value_t = Transport::Stdio,
+        env = "MCP_EXEC_TRANSPORT"
+    )]
     pub transport: Transport,
-    #[arg(short, long, default_value = "127.0.0.1:3344")]
+    #[arg(short, long, default_value = "127.0.0.1:3344", env = "MCP_EXEC_BIND")]
     pub bind: String,
     #[arg(
         long = "auth-token",
@@ -111,35 +135,40 @@ pub struct Args {
         long = "rate-limit-rps",
         default_value = "10",
         value_parser = clap::value_parser!(u32),
-        help = "Maximum requests per second (Rate Limiting)."
+        help = "Maximum requests per second (Rate Limiting).",
+        env = "MCP_EXEC_RATE_LIMIT_RPS"
     )]
     pub rate_limit_rps: u32,
     #[arg(
         long = "rate-limit-burst",
         default_value = "20",
         value_parser = clap::value_parser!(u32),
-        help = "Burst size for rate limiting."
+        help = "Burst size for rate limiting.",
+        env = "MCP_EXEC_RATE_LIMIT_BURST"
     )]
     pub rate_limit_burst: u32,
     #[arg(
         long = "max-concurrent",
         default_value = "50",
         value_parser = clap::value_parser!(usize),
-        help = "Maximum concurrent command executions."
+        help = "Maximum concurrent command executions.",
+        env = "MCP_EXEC_MAX_CONCURRENT"
     )]
     pub max_concurrent: usize,
     #[arg(
         long = "circuit-threshold",
         default_value = "10",
         value_parser = clap::value_parser!(usize),
-        help = "Circuit breaker failure threshold."
+        help = "Circuit breaker failure threshold.",
+        env = "MCP_EXEC_CIRCUIT_THRESHOLD"
     )]
     pub circuit_threshold: usize,
     #[arg(
         long = "circuit-timeout",
         default_value = "60",
         value_parser = clap::value_parser!(u64),
-        help = "Circuit breaker timeout in seconds."
+        help = "Circuit breaker timeout in seconds.",
+        env = "MCP_EXEC_CIRCUIT_TIMEOUT_SECS"
     )]
     pub circuit_timeout_secs: u64,
 }
