@@ -36,7 +36,8 @@ pub struct Args {
         long = "cmd",
         value_parser = crate::tool::parse_command_def,
         value_name = "NAME|\"TEMPLATE\"",
-        env = "MCP_EXEC_COMMANDS"
+        env = "MCP_EXEC_COMMANDS",
+        value_delimiter = ';'
     )]
     pub commands: Vec<CommandDef>,
     #[arg(
