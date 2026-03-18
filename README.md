@@ -1,10 +1,10 @@
-# mcp-exec
+# mcp-secure-exec
 
 Secure MCP server for executing user-defined shell commands via templates.
 
 ## Overview
 
-`mcp-exec` is a robust Model Context Protocol (MCP) server designed to safely expose shell command functionality to AI clients. It bridges the gap between LLMs and system operations by enforcing strict security policies, input validation, and execution limits. The server supports multiple transport layers, with **Streamable HTTP as the recommended default** for remote deployments, alongside Stdio for local integrations.
+`mcp-secure-exec` is a robust Model Context Protocol (MCP) server designed to safely expose shell command functionality to AI clients. It bridges the gap between LLMs and system operations by enforcing strict security policies, input validation, and execution limits. The server supports multiple transport layers, with **Streamable HTTP as the recommended default** for remote deployments, alongside Stdio for local integrations.
 
 ## Data Access Modes
 
@@ -29,9 +29,9 @@ The server supports two primary transport mechanisms for MCP communication:
 
 ```yaml
 services:
-  mcp-exec:
-    image: timasoft/mcp-exec:0.1.0
-    container_name: mcp-exec
+  mcp-secure-exec:
+    image: timasoft/mcp-secure-exec:0.1.0
+    container_name: mcp-secure-exec
     restart: unless-stopped
     environment:
       MCP_EXEC_COMMANDS: 'echo|"echo {message}"'
@@ -66,7 +66,7 @@ Make sure to:
 After adding the service, run:
 ```bash
 docker-compose up -d
-docker-compose logs -f mcp-exec
+docker-compose logs -f mcp-secure-exec
 ```
 
 **Verify HTTP server is running:**
@@ -80,7 +80,7 @@ If you're using Nix or NixOS, you can build and run the application directly:
 
 **Streamable HTTP mode (recommended for remote/server use):**
 ```bash
-nix run github:timasoft/mcp-exec -- \
+nix run github:timasoft/mcp-secure-exec -- \
   --cmd 'status|"systemctl status {service}"' \
   --transport streamable-http \
   --bind 127.0.0.1:3344 \
@@ -89,7 +89,7 @@ nix run github:timasoft/mcp-exec -- \
 
 **Stdio mode (for local MCP clients like Claude Desktop):**
 ```bash
-nix run github:timasoft/mcp-exec -- \
+nix run github:timasoft/mcp-secure-exec -- \
   --cmd 'echo|"echo {message}"' \
   --cmd 'date|"date"' \
   --transport stdio
@@ -97,7 +97,7 @@ nix run github:timasoft/mcp-exec -- \
 
 **With path restrictions and security hardening:**
 ```bash
-nix run github:timasoft/mcp-exec -- \
+nix run github:timasoft/mcp-secure-exec -- \
   --cmd 'cat|"cat {path}"' \
   --base-path /home/user \
   --cmd-timeout 10 \
@@ -113,14 +113,14 @@ nix run github:timasoft/mcp-exec -- \
 
 2. Install the project:
    ```bash
-   cargo install mcp-exec
+   cargo install mcp-secure-exec
    ```
 
 3. Run the application:
 
    **Streamable HTTP mode (recommended):**
    ```bash
-   mcp-exec \
+   mcp-secure-exec \
      --cmd 'uptime|"uptime"' \
      --transport streamable-http \
      --bind 127.0.0.1:3344 \
@@ -129,7 +129,7 @@ nix run github:timasoft/mcp-exec -- \
 
    **Stdio mode (for local MCP clients):**
    ```bash
-   mcp-exec \
+   mcp-secure-exec \
      --cmd 'echo|"echo {message}"' \
      --cmd 'ls|"ls -la {path}"' \
      --base-path /home/user \
@@ -142,12 +142,12 @@ nix run github:timasoft/mcp-exec -- \
    export MCP_EXEC_TRANSPORT=streamable-http
    export MCP_EXEC_AUTH_TOKEN='very_secret_token'
    export MCP_EXEC_LOG_LEVEL=info
-   mcp-exec
+   mcp-secure-exec
    ```
 
    **Dry-run validation (test configuration without starting server):**
    ```bash
-   mcp-exec --cmd 'test|"echo {arg}"' --dry-run
+   mcp-secure-exec --cmd 'test|"echo {arg}"' --dry-run
    ```
 
 ## Configuration
@@ -202,7 +202,7 @@ All configuration options can be set via environment variables. CLI arguments ta
 ### Command Line Arguments
 
 ```bash
-Usage: mcp-exec [OPTIONS]
+Usage: mcp-secure-exec [OPTIONS]
 
 Options:
   -c, --cmd <NAME|"TEMPLATE">
@@ -267,7 +267,7 @@ Placeholder names in command templates trigger specific validation behaviors:
 
 **Remote Server with Authentication**
 ```bash
-mcp-exec \
+mcp-secure-exec \
   --cmd 'status|"systemctl status {service}"' \
   --transport streamable-http \
   --bind 127.0.0.1:3344 \
@@ -279,7 +279,7 @@ mcp-exec \
 export MCP_EXEC_TRANSPORT=streamable-http
 export MCP_EXEC_AUTH_TOKEN='very_secret_token'
 export MCP_EXEC_COMMANDS='status|"systemctl status {service}"'
-mcp-exec
+mcp-secure-exec
 ```
 
 **Health Check Verification**
@@ -289,7 +289,7 @@ curl http://127.0.0.1:3344/health
 
 **Multiple Tools with HTTP**
 ```bash
-mcp-exec \
+mcp-secure-exec \
   --cmd 'date|"date"' \
   --cmd 'uptime|"uptime"' \
   --cmd 'df|"df -h {mount}"' \
@@ -302,31 +302,31 @@ mcp-exec \
 
 **Basic Echo Tool**
 ```bash
-mcp-exec --cmd 'echo|"echo {message}"' --log-level debug --transport stdio
+mcp-secure-exec --cmd 'echo|"echo {message}"' --log-level debug --transport stdio
 ```
 
 **File Listing with Path Validation**
 ```bash
-mcp-exec --cmd 'ls|"ls -la {path}"' --base-path /home/user --transport stdio
+mcp-secure-exec --cmd 'ls|"ls -la {path}"' --base-path /home/user --transport stdio
 ```
 
 **Multiple Tools Configuration**
 ```bash
-mcp-exec --cmd 'date|"date"' --cmd 'uptime|"uptime"' --transport stdio
+mcp-secure-exec --cmd 'date|"date"' --cmd 'uptime|"uptime"' --transport stdio
 ```
 
 OR
 ```bash
-mcp-exec --cmd 'date|"date";uptime|"uptime"' --transport stdio
+mcp-secure-exec --cmd 'date|"date";uptime|"uptime"' --transport stdio
 ```
 
 ### Dry-Run Validation
 ```bash
-mcp-exec --cmd 'test|"echo {arg}"' --dry-run
+mcp-secure-exec --cmd 'test|"echo {arg}"' --dry-run
 ```
 
 ```bash
-MCP_EXEC_DRY_RUN=true MCP_EXEC_COMMANDS='test|"echo {arg}"' mcp-exec
+MCP_EXEC_DRY_RUN=true MCP_EXEC_COMMANDS='test|"echo {arg}"' mcp-secure-exec
 ```
 
 ## MCP Client Integration
@@ -342,8 +342,8 @@ MCP_EXEC_DRY_RUN=true MCP_EXEC_COMMANDS='test|"echo {arg}"' mcp-exec
 ```json
 {
   "mcpServers": {
-    "mcp-exec": {
-      "command": "mcp-exec",
+    "mcp-secure-exec": {
+      "command": "mcp-secure-exec",
       "args": [
         "--cmd", "echo|\"echo {message}\"",
         "--cmd", "ls|\"ls -la {path}\"",
@@ -366,7 +366,7 @@ npm install -g @modelcontextprotocol/inspector
 
 ## Architecture
 
-`mcp-exec` follows a layered security architecture designed to isolate command execution from the MCP protocol handling.
+`mcp-secure-exec` follows a layered security architecture designed to isolate command execution from the MCP protocol handling.
 
 ### Streamable HTTP Transport (Recommended)
 - Implements Streamable HTTP Server spec for MCP.
@@ -407,11 +407,11 @@ Input is normalized to both NFC and NFD forms to prevent bypasses using Unicode 
 
 ### Enable Debug Logging
 ```bash
-mcp-exec --cmd 'test|"echo test"' --log-level trace
+mcp-secure-exec --cmd 'test|"echo test"' --log-level trace
 ```
 
 ```bash
-MCP_EXEC_LOG_LEVEL=trace mcp-exec --cmd 'test|"echo test"'
+MCP_EXEC_LOG_LEVEL=trace mcp-secure-exec --cmd 'test|"echo test"'
 ```
 
 ### Verify Binary Availability
@@ -426,7 +426,7 @@ MCP_EXEC_LOG_LEVEL=trace mcp-exec --cmd 'test|"echo test"'
 
 ## Security
 
-`mcp-exec` is designed with security as a primary concern. However, please note:
+`mcp-secure-exec` is designed with security as a primary concern. However, please note:
 
 - Never use `--allow-dangerous` unless you fully understand the risks.
 - Always use `--base-path` when exposing file operations.

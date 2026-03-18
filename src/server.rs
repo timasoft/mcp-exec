@@ -136,7 +136,9 @@ impl ExecServer {
         Ok(Self {
             tools: Arc::new(tools),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
-            instructions: Some(format!("mcp-exec: {tc} command templates with security")),
+            instructions: Some(format!(
+                "mcp-secure-exec: {tc} command templates with security"
+            )),
             sensitive_keys: sk,
             rate_limiter: rl,
             concurrency_semaphore: cs,
@@ -161,7 +163,7 @@ impl ServerHandler for ExecServer {
                 serde_json::from_value(json!({
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "serverInfo": { "name": "mcp-exec", "version": "0.1.0" },
+                    "serverInfo": { "name": "mcp-secure-exec", "version": "0.1.0" },
                     "instructions": null
                 }))
                 .unwrap_or_else(|fallback_err| {
@@ -340,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_security_config_default_blacklist() {
-        let args = Args::parse_from(["mcp-exec", "--cmd", r#"ls|"ls {path}""#]);
+        let args = Args::parse_from(["mcp-secure-exec", "--cmd", r#"ls|"ls {path}""#]);
         let config = SecurityConfig::from_args(&args);
         assert!(config.blacklist.contains(&"rm".to_string()));
         assert!(config.blacklist.contains(&"dd".to_string()));
@@ -350,7 +352,7 @@ mod tests {
     #[test]
     fn test_security_config_allow_dangerous() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"ls|"ls {path}""#,
             "--allow-dangerous",
@@ -362,7 +364,7 @@ mod tests {
     #[test]
     fn test_security_config_no_validate_paths() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"ls|"ls {path}""#,
             "--no-validate-paths",
@@ -374,7 +376,7 @@ mod tests {
     #[test]
     fn test_security_config_base_path() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"ls|"ls {path}""#,
             "--base-path",
@@ -387,7 +389,7 @@ mod tests {
     #[test]
     fn test_security_config_cmd_timeout() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"ls|"ls {path}""#,
             "--cmd-timeout",
@@ -400,7 +402,7 @@ mod tests {
     #[test]
     fn test_security_config_sensitive_keys() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"ls|"ls {path}""#,
             "--sensitive-keys",
@@ -419,7 +421,7 @@ mod tests {
     #[test]
     fn test_server_limits_from_args() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"ls|"ls {path}""#,
             "--rate-limit-rps",
@@ -443,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_server_limits_default_values() {
-        let args = Args::parse_from(["mcp-exec", "--cmd", r#"ls|"ls {path}""#]);
+        let args = Args::parse_from(["mcp-secure-exec", "--cmd", r#"ls|"ls {path}""#]);
         let limits = ServerLimits::from_args(&args);
         assert_eq!(limits.rate_limit_rps, 10);
         assert_eq!(limits.rate_limit_burst, 20);
@@ -460,13 +462,13 @@ mod tests {
     fn test_exec_server_new_success() {
         let cmds = vec![parse_command_def(r#"echo|"echo {message}""#).unwrap()];
         let config = SecurityConfig::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {message}""#,
             "--allow-missing-binaries",
         ]));
         let limits = ServerLimits::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {message}""#,
         ]));
@@ -481,12 +483,12 @@ mod tests {
     fn test_exec_server_new_blacklisted_binary() {
         let cmds = vec![parse_command_def(r#"rm|"rm {path}""#).unwrap()];
         let config = SecurityConfig::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"rm|"rm {path}""#,
         ]));
         let limits = ServerLimits::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"rm|"rm {path}""#,
         ]));
@@ -498,14 +500,14 @@ mod tests {
     fn test_exec_server_new_blacklisted_allowed() {
         let cmds = vec![parse_command_def(r#"rm|"rm {path}""#).unwrap()];
         let config = SecurityConfig::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"rm|"rm {path}""#,
             "--allow-dangerous",
             "--allow-missing-binaries",
         ]));
         let limits = ServerLimits::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"rm|"rm {path}""#,
         ]));
@@ -522,7 +524,7 @@ mod tests {
             parse_command_def(r#"wc|"wc {file}""#).unwrap(),
         ];
         let config = SecurityConfig::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {message}""#,
             "--cmd",
@@ -532,7 +534,7 @@ mod tests {
             "--allow-missing-binaries",
         ]));
         let limits = ServerLimits::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {message}""#,
         ]));
@@ -546,19 +548,19 @@ mod tests {
     fn test_exec_server_get_info() {
         let cmds = vec![parse_command_def(r#"echo|"echo {message}""#).unwrap()];
         let config = SecurityConfig::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {message}""#,
             "--allow-missing-binaries",
         ]));
         let limits = ServerLimits::from_args(&Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {message}""#,
         ]));
         let server = ExecServer::new(cmds, config, &limits).unwrap();
         let info = server.get_info();
-        assert_eq!(info.server_info.name, "mcp-exec");
+        assert_eq!(info.server_info.name, "mcp-secure-exec");
     }
 
     // =============================================================================

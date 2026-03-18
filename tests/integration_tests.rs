@@ -11,7 +11,7 @@ fn test_cli_help() {
         .expect("Failed to execute command");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("mcp-exec"));
+    assert!(stdout.contains("mcp-secure-exec"));
     assert!(stdout.contains("--cmd"));
 }
 

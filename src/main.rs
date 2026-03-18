@@ -136,7 +136,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let log_level = args.log_level.clone();
 
     info!(
-        "Starting mcp-exec (transport={}, tools={}, auth={})",
+        "Starting mcp-secure-exec (transport={}, tools={}, auth={})",
         transport,
         args.commands.len(),
         if auth_tok.is_some() {

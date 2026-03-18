@@ -12,14 +12,14 @@
       naerskLib = pkgs.callPackage naersk {};
       rustSrc = pkgs.rust.packages.stable.rustPlatform.rustLibSrc;
 
-      mcp-exec = naerskLib.buildPackage {
+      mcp-secure-exec = naerskLib.buildPackage {
         src = ./.;
         nativeBuildInputs = [ pkgs.pkg-config ];
       };
     in {
-      packages.default = mcp-exec;
+      packages.default = mcp-secure-exec;
 
-      defaultPackage = mcp-exec;
+      defaultPackage = mcp-secure-exec;
 
       devShells.default = pkgs.mkShell {
         buildInputs = with pkgs; [

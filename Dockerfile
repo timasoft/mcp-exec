@@ -28,7 +28,7 @@ RUN apt-get update && \
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-COPY --from=builder --chown=appuser:appuser /app/target/release/mcp-exec /usr/local/bin/
+COPY --from=builder --chown=appuser:appuser /app/target/release/mcp-secure-exec /usr/local/bin/
 
 RUN mkdir -p /data && \
     chown -R appuser:appuser /data
@@ -39,11 +39,11 @@ RUN chown appuser:appuser /app
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:3344/health || exit 1
 
-LABEL org.opencontainers.image.source="https://github.com/timasoft/mcp-exec"
+LABEL org.opencontainers.image.source="https://github.com/timasoft/mcp-secure-exec"
 LABEL org.opencontainers.image.description="MCP server for executing user-defined shell commands via templates"
 LABEL org.opencontainers.image.version="0.1.0"
 LABEL org.opencontainers.image.authors="timasoft"
 
 USER appuser
 
-ENTRYPOINT ["/usr/local/bin/mcp-exec"]
+ENTRYPOINT ["/usr/local/bin/mcp-secure-exec"]

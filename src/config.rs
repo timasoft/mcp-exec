@@ -29,7 +29,11 @@ pub enum LogLevel {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "mcp-exec", version, about = "MCP server for command templates")]
+#[command(
+    name = "mcp-secure-exec",
+    version,
+    about = "MCP server for command templates"
+)]
 pub struct Args {
     #[arg(
         short,
@@ -249,7 +253,7 @@ mod tests {
     #[test]
     fn test_args_parse_commands() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {message}""#,
             "--cmd",
@@ -262,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_args_default_blacklist() {
-        let args = Args::parse_from(["mcp-exec", "--cmd", r#"echo|"echo {msg}""#]);
+        let args = Args::parse_from(["mcp-secure-exec", "--cmd", r#"echo|"echo {msg}""#]);
         assert!(args.dangerous.contains("rm"));
         assert!(args.dangerous.contains("sudo"));
         assert!(args.dangerous.contains("bash"));
@@ -270,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_args_default_values() {
-        let args = Args::parse_from(["mcp-exec", "--cmd", r#"echo|"echo {msg}""#]);
+        let args = Args::parse_from(["mcp-secure-exec", "--cmd", r#"echo|"echo {msg}""#]);
         assert!(!args.allow_dangerous);
         assert!(!args.no_validate_paths);
         assert!(!args.allow_missing_binaries);
@@ -286,7 +290,7 @@ mod tests {
     #[test]
     fn test_args_custom_values() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {msg}""#,
             "--allow-dangerous",
@@ -315,7 +319,7 @@ mod tests {
     #[test]
     fn test_security_config_from_args() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {msg}""#,
             "--allow-dangerous",
@@ -335,7 +339,7 @@ mod tests {
     #[test]
     fn test_server_limits_from_args_custom() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {msg}""#,
             "--rate-limit-rps",
@@ -359,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_sensitive_keys_default() {
-        let args = Args::parse_from(["mcp-exec", "--cmd", r#"echo|"echo {msg}""#]);
+        let args = Args::parse_from(["mcp-secure-exec", "--cmd", r#"echo|"echo {msg}""#]);
         let config = SecurityConfig::from_args(&args);
         assert!(config.sensitive_keys.contains(&"password".to_string()));
         assert!(config.sensitive_keys.contains(&"token".to_string()));
@@ -369,7 +373,7 @@ mod tests {
     #[test]
     fn test_blacklist_parsing() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {msg}""#,
             "--blacklist",
@@ -384,7 +388,7 @@ mod tests {
     #[test]
     fn test_blacklist_whitespace_trimmed() {
         let args = Args::parse_from([
-            "mcp-exec",
+            "mcp-secure-exec",
             "--cmd",
             r#"echo|"echo {msg}""#,
             "--blacklist",

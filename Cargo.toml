@@ -1,10 +1,10 @@
 [package]
-name = "mcp-exec"
+name = "mcp-secure-exec"
 version = "0.1.0"
 edition = "2024"
 authors = ["timasoft <tima.klester@yandex.ru>"]
 license = "GPL-3.0-or-later"
-repository = "https://github.com/timasoft/mcp-exec"
+repository = "https://github.com/timasoft/mcp-secure-exec"
 description = "MCP server for executing user-defined shell commands via templates"
 keywords = ["mcp", "exec", "shell", "cli", "automation"]
 categories = ["command-line-utilities", "development-tools"]
