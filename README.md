@@ -431,7 +431,7 @@ MCP_EXEC_LOG_LEVEL=trace mcp-secure-exec --cmd 'test|"echo test"'
 - Never use `--allow-dangerous` unless you fully understand the risks.
 - Always use `--base-path` when exposing file operations.
 - Enable `MCP_EXEC_AUTH_TOKEN` for HTTP transport.
-- **Blacklist matching is case-insensitive**: `RM`, `Sudo`, and `baSh` are blocked just like their lowercase forms.
+- **Blacklist matching is case-insensitive**: `RM`, `Sudo`, and `bAsH` are blocked just like their lowercase forms.
 - **`--allow-missing-binaries` defers security checks**: A command may pass startup validation but fail at runtime if the binary is missing or has been replaced.
 - **Audit logs redact sensitive data**: Arguments matching `MCP_EXEC_SENSITIVE_KEYS` are masked as `[REDACTED]`.
 - **Dangerous flags are always blocked**: Even with `*_flag` placeholders, flags like `-v`, `-x`, `-e`, `--exec`, etc. are rejected regardless of context.
