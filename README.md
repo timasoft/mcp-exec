@@ -4,14 +4,14 @@ Secure MCP server for executing user-defined shell commands via templates.
 
 ## Overview
 
-`mcp-exec` is a robust Model Context Protocol (MCP) server designed to safely expose shell command functionality to AI clients. It bridges the gap between LLMs and system operations by enforcing strict security policies, input validation, and execution limits. The server supports multiple transport layers, allowing integration via standard input/output or modern HTTP streams.
+`mcp-exec` is a robust Model Context Protocol (MCP) server designed to safely expose shell command functionality to AI clients. It bridges the gap between LLMs and system operations by enforcing strict security policies, input validation, and execution limits. The server supports multiple transport layers, with **Streamable HTTP as the recommended default** for remote deployments, alongside Stdio for local integrations.
 
 ## Data Access Modes
 
 The server supports two primary transport mechanisms for MCP communication:
 
-1. **Stdio**: Ideal for local integrations and piping within existing workflows.
-2. **Streamable HTTP**: Suitable for remote connections, supporting stateful sessions.
+1. **Streamable HTTP** (Recommended): Suitable for remote connections, supporting stateful sessions, authentication and health checks. Ideal for containerized and cloud deployments.
+2. **Stdio**: Ideal for local integrations and piping within existing workflows (e.g., Claude Desktop, local scripts).
 
 ## Features
 
@@ -21,6 +21,7 @@ The server supports two primary transport mechanisms for MCP communication:
 - **Rate Limiting & Concurrency Control**: Protects resources with configurable request limits and concurrent execution caps.
 - **Circuit Breaker Protection**: Automatically halts execution during repeated failures to prevent cascading errors.
 - **Comprehensive Audit Logging**: Tracks command invocations and security events with redacted sensitive data.
+- **Graceful Shutdown**: Handles SIGINT/SIGTERM for clean termination.
 
 ## Installation
 
@@ -33,26 +34,33 @@ services:
     container_name: mcp-exec
     restart: unless-stopped
     environment:
-      - MCP_EXEC_COMMANDS=echo|"echo {message}"
-      - MCP_EXEC_TRANSPORT=stdio
-      - MCP_EXEC_LOG_LEVEL=info
+      MCP_EXEC_COMMANDS: 'echo|"echo {message}"'
+      MCP_EXEC_TRANSPORT: streamable-http
+      MCP_EXEC_BIND: 0.0.0.0:3344
+      MCP_EXEC_AUTH_TOKEN: 'very_secret_token'
+      MCP_EXEC_LOG_LEVEL: info
     security_opt:
-      - no-new-privileges:true
+      - no-new-privileges: true
     read_only: true
     tmpfs:
       - /tmp
+    ports:
+      - "127.0.0.1:3344:3344"
 ```
+
+> ⚠️ **YAML Quoting**: Always quote environment variable values containing special characters like `|` or `{}` to prevent YAML parsing errors.
 
 **Important notes about configuration:**
 
 - **Security Context**: Always run with `no-new-privileges` and read-only filesystem where possible.
 - **Command Definition**: Commands must be defined via environment variables or CLI arguments; no commands are allowed by default.
-- **Network Binding**: When using HTTP transport, ensure the bind address is restricted to localhost unless explicitly needed.
+- **Network Binding**: When using HTTP transport, bind to `127.0.0.1` unless external access is explicitly required.
+- **Authentication**: Enable `MCP_EXEC_AUTH_TOKEN` for HTTP transport to require Bearer token authentication.
 - **Sensitive Data**: Use `MCP_EXEC_SENSITIVE_KEYS` to ensure secrets are not logged in plain text.
 
 Make sure to:
 1. Define at least one command template using `MCP_EXEC_COMMANDS`.
-2. Set the appropriate transport mode for your client integration.
+2. Set `MCP_EXEC_TRANSPORT=streamable-http` for remote access (default is `stdio`).
 3. Verify binary availability within the container environment.
 
 After adding the service, run:
@@ -61,23 +69,39 @@ docker-compose up -d
 docker-compose logs -f mcp-exec
 ```
 
+**Verify HTTP server is running:**
+```bash
+curl http://127.0.0.1:3344/health
+```
+
 ### Nix
 
 If you're using Nix or NixOS, you can build and run the application directly:
 
-**Stdio mode (local MCP client):**
+**Streamable HTTP mode (recommended for remote/server use):**
 ```bash
-nix run github:timasoft/mcp-exec -- --cmd 'echo|"echo {message}"' --cmd 'date|"date"' --transport stdio
+nix run github:timasoft/mcp-exec -- \
+  --cmd 'status|"systemctl status {service}"' \
+  --transport streamable-http \
+  --bind 127.0.0.1:3344 \
+  --auth-token your_secret_token
 ```
 
-**Streamable HTTP mode (remote server):**
+**Stdio mode (for local MCP clients like Claude Desktop):**
 ```bash
-nix run github:timasoft/mcp-exec -- --cmd 'status|"systemctl status {service}"' --transport streamable-http --bind 127.0.0.1:3344 --auth-token your_secret_token
+nix run github:timasoft/mcp-exec -- \
+  --cmd 'echo|"echo {message}"' \
+  --cmd 'date|"date"' \
+  --transport stdio
 ```
 
 **With path restrictions and security hardening:**
 ```bash
-nix run github:timasoft/mcp-exec -- --cmd 'cat|"cat {path}"' --base-path /home/user --cmd-timeout 10 --log-level debug
+nix run github:timasoft/mcp-exec -- \
+  --cmd 'cat|"cat {path}"' \
+  --base-path /home/user \
+  --cmd-timeout 10 \
+  --log-level debug
 ```
 
 ### From Source
@@ -94,20 +118,29 @@ nix run github:timasoft/mcp-exec -- --cmd 'cat|"cat {path}"' --base-path /home/u
 
 3. Run the application:
 
-   **Stdio mode (for local MCP clients like Claude Desktop):**
+   **Streamable HTTP mode (recommended):**
    ```bash
-   mcp-exec --cmd 'echo|"echo {message}"' --cmd 'ls|"ls -la {path}"' --base-path /home/user
+   mcp-exec \
+     --cmd 'uptime|"uptime"' \
+     --transport streamable-http \
+     --bind 127.0.0.1:3344 \
+     --auth-token secure_token
    ```
 
-   **Streamable HTTP mode (for remote integrations):**
+   **Stdio mode (for local MCP clients):**
    ```bash
-   mcp-exec --cmd 'uptime|"uptime"' --transport streamable-http --bind 0.0.0.0:3344 --auth-token secure_token
+   mcp-exec \
+     --cmd 'echo|"echo {message}"' \
+     --cmd 'ls|"ls -la {path}"' \
+     --base-path /home/user \
+     --transport stdio
    ```
 
    **Environment variable configuration (recommended):**
    ```bash
    export MCP_EXEC_COMMANDS='echo|"echo {msg}"'
-   export MCP_EXEC_TRANSPORT=stdio
+   export MCP_EXEC_TRANSPORT=streamable-http
+   export MCP_EXEC_AUTH_TOKEN='very_secret_token'
    export MCP_EXEC_LOG_LEVEL=info
    mcp-exec
    ```
@@ -116,15 +149,6 @@ nix run github:timasoft/mcp-exec -- --cmd 'cat|"cat {path}"' --base-path /home/u
    ```bash
    mcp-exec --cmd 'test|"echo {arg}"' --dry-run
    ```
-
-> **Note**: To install from a local repository instead of crates.io, use:
-> ```bash
-> cargo install --path .
-> ```
-> Or for a specific git repository:
-> ```bash
-> cargo install --git https://github.com/timasoft/mcp-exec.git
-> ```
 
 ## Configuration
 
@@ -137,17 +161,19 @@ All configuration options can be set via environment variables. CLI arguments ta
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MCP_EXEC_COMMANDS` | Command definitions in format `name\|"template"` (semicolon-delimited for multiple) | *Required* |
-| `MCP_EXEC_DANGEROUS` | Comma-separated list of restricted binaries | `rm,dd,mkfs,chmod,chown,sudo,su,curl,wget,sh,bash,dash,zsh,python,python3,perl,ruby,node,lua,php,awk,sed,gawk,git,ssh,scp,rsync,tar,zip,unzip,gzip,bzip2,find,xargs,env,nice,timeout,strace,ltrace,ncat,netcat,nc,telnet,ftp,sftp,rbash,rsh` |
+| `MCP_EXEC_DANGEROUS` | Comma-separated list of restricted binaries (case-insensitive matching) | `rm,dd,mkfs,chmod,chown,sudo,su,curl,wget,sh,bash,dash,zsh,python,python3,perl,ruby,node,lua,php,awk,sed,gawk,git,ssh,scp,rsync,tar,zip,unzip,gzip,bzip2,find,xargs,env,nice,timeout,strace,ltrace,ncat,netcat,nc,telnet,ftp,sftp,rbash,rsh` |
 | `MCP_EXEC_ALLOW_DANGEROUS` | Allow execution of restricted binaries (`true`/`false`) | `false` |
 | `MCP_EXEC_BASE_PATH` | Restrict path-like arguments to this directory | *None* |
 | `MCP_EXEC_NO_VALIDATE_PATHS` | Disable path traversal protection (`true`/`false`) | `false` |
-| `MCP_EXEC_ALLOW_MISSING_BINARIES` | Allow commands whose binaries are not in PATH (`true`/`false`) | `false` |
+| `MCP_EXEC_ALLOW_MISSING_BINARIES` | Allow commands whose binaries are not in PATH at startup (`true`/`false`) | `false` |
+
+> ⚠️ **`--allow-missing-binaries` behavior**: This flag defers binary existence checks from startup to runtime. While useful for testing or dynamic environments, it increases runtime risk: a command may fail unexpectedly if the binary is missing or has been tampered with.
 
 #### Security & Logging
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MCP_EXEC_SENSITIVE_KEYS` | Comma-separated list of argument names to mask in logs | `password,token,secret,key,auth,credential` |
+| `MCP_EXEC_SENSITIVE_KEYS` | Comma-separated list of argument names to mask in logs (case-insensitive) | `password,token,secret,key,auth,credential` |
 | `MCP_EXEC_AUTH_TOKEN` | Optional Bearer token for HTTP authentication | *None* |
 | `MCP_EXEC_LOG_LEVEL` | Logging verbosity level | `info` |
 | `MCP_EXEC_DRY_RUN` | Validate configuration and exit (`true`/`false`) | `false` |
@@ -156,7 +182,7 @@ All configuration options can be set via environment variables. CLI arguments ta
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MCP_EXEC_TRANSPORT` | Communication protocol | `stdio` |
+| `MCP_EXEC_TRANSPORT` | Communication protocol (`stdio` or `streamable-http`) | `stdio` |
 | `MCP_EXEC_BIND` | Network address for HTTP server | `127.0.0.1:3344` |
 | `MCP_EXEC_STATEFUL` | Enable stateful sessions for HTTP transport (`true`/`false`) | `false` |
 
@@ -171,7 +197,7 @@ All configuration options can be set via environment variables. CLI arguments ta
 | `MCP_EXEC_CIRCUIT_THRESHOLD` | Circuit breaker failure threshold | `10` |
 | `MCP_EXEC_CIRCUIT_TIMEOUT_SECS` | Circuit breaker timeout in seconds | `60` |
 
-> **Default Security Posture**: `MCP_EXEC_DANGEROUS` includes common system utilities like `rm`, `sudo`, and shells to prevent accidental system damage.
+> **Default Security Posture**: `MCP_EXEC_DANGEROUS` includes common system utilities like `rm`, `sudo`, and shells to prevent accidental system damage. **Blacklist matching is case-insensitive** — `RM`, `Rm`, and `rm` are all blocked.
 
 ### Command Line Arguments
 
@@ -223,25 +249,65 @@ Options:
           Print version
 ```
 
+## Placeholder Naming Conventions
+
+Placeholder names in command templates trigger specific validation behaviors:
+
+| Placeholder Pattern | Effect | Example |
+|--------------------|--------|---------|
+| `path`, `file`, `dir`, `filepath` | Enables path traversal protection; requires `--base-path` for relative paths | `{path}`, `{file}` |
+| `*_flag`, `*_opt` | Allows safe single-dash flags like `-h`; dangerous flags (e.g., `-v`, `-x`, `-e`) are blocked regardless | `{verbose_flag}` → `-h` OK, `-v` rejected |
+| Any other name | Blocks shell metacharacters and command-like patterns | `{message}` → `hello;rm` rejected |
+
+> 💡 **Note**: Even with `*_flag` suffix, flags listed in the dangerous patterns blacklist (like `-v`, `-x`, `-e`, `--exec`, etc.) are always blocked for security. Use only safe, non-dangerous flags with flag placeholders.
+
 ## Usage Examples
 
-### Stdio Mode
+### Streamable HTTP Mode (Recommended)
+
+**Remote Server with Authentication**
+```bash
+mcp-exec \
+  --cmd 'status|"systemctl status {service}"' \
+  --transport streamable-http \
+  --bind 127.0.0.1:3344 \
+  --auth-token secure_token
+```
+
+**Environment Variable HTTP Configuration**
+```bash
+export MCP_EXEC_TRANSPORT=streamable-http
+export MCP_EXEC_AUTH_TOKEN='very_secret_token'
+export MCP_EXEC_COMMANDS='status|"systemctl status {service}"'
+mcp-exec
+```
+
+**Health Check Verification**
+```bash
+curl http://127.0.0.1:3344/health
+```
+
+**Multiple Tools with HTTP**
+```bash
+mcp-exec \
+  --cmd 'date|"date"' \
+  --cmd 'uptime|"uptime"' \
+  --cmd 'df|"df -h {mount}"' \
+  --transport streamable-http \
+  --bind 0.0.0.0:3344 \
+  --auth-token very_secret_token
+```
+
+### Stdio Mode (Local Use)
 
 **Basic Echo Tool**
 ```bash
-mcp-exec --cmd 'echo|"echo {message}"' --log-level debug
-```
-
-**Environment Variable Configuration**
-```bash
-export MCP_EXEC_COMMANDS='echo|"echo {message}"'
-export MCP_EXEC_LOG_LEVEL=debug
-mcp-exec
+mcp-exec --cmd 'echo|"echo {message}"' --log-level debug --transport stdio
 ```
 
 **File Listing with Path Validation**
 ```bash
-mcp-exec --cmd 'ls|"ls -la {path}"' --base-path /home/user
+mcp-exec --cmd 'ls|"ls -la {path}"' --base-path /home/user --transport stdio
 ```
 
 **Multiple Tools Configuration**
@@ -252,26 +318,6 @@ mcp-exec --cmd 'date|"date"' --cmd 'uptime|"uptime"' --transport stdio
 OR
 ```bash
 mcp-exec --cmd 'date|"date";uptime|"uptime"' --transport stdio
-```
-
-### Streamable HTTP Mode
-
-**Remote Server with Authentication**
-```bash
-mcp-exec --cmd 'status|"systemctl status {service}"' --transport streamable-http --auth-token secure_token
-```
-
-**Environment Variable HTTP Configuration**
-```bash
-export MCP_EXEC_TRANSPORT=streamable-http
-export MCP_EXEC_AUTH_TOKEN=my_secret_token
-export MCP_EXEC_COMMANDS='status|"systemctl status {service}"'
-mcp-exec
-```
-
-**Health Check Verification**
-```bash
-curl http://127.0.0.1:3344/health
 ```
 
 ### Dry-Run Validation
@@ -285,12 +331,31 @@ MCP_EXEC_DRY_RUN=true MCP_EXEC_COMMANDS='test|"echo {arg}"' mcp-exec
 
 ## MCP Client Integration
 
-### For Claude Desktop:
-- `stdio` - Use for local subprocess execution in `claude_desktop_config.json`.
-- `streamable-http` - Use for remote server connections via URL.
-- `auth-token` - Required if `MCP_EXEC_AUTH_TOKEN` is set on the server.
+### For Remote Clients (HTTP Transport):
+- Use `streamable-http` transport with the server URL: `http://host:3344`
+- Include `Authorization: Bearer <token>` header if `MCP_EXEC_AUTH_TOKEN` is set
+- Health endpoint: `GET /health` returns `OK`
 
-### For IDE Extensions:
+### For Claude Desktop (Stdio Transport) (Not tested):
+- Use `stdio` transport for local subprocess execution in `claude_desktop_config.json`
+- Example configuration:
+```json
+{
+  "mcpServers": {
+    "mcp-exec": {
+      "command": "mcp-exec",
+      "args": [
+        "--cmd", "echo|\"echo {message}\"",
+        "--cmd", "ls|\"ls -la {path}\"",
+        "--base-path", "/home/user",
+        "--transport", "stdio"
+      ]
+    }
+  }
+}
+```
+
+### For IDE Extensions (Not tested):
 - `transport` - Ensure the client supports the selected transport protocol.
 - `commands` - Verify tool names match the `--cmd` name definition exactly.
 
@@ -303,23 +368,40 @@ npm install -g @modelcontextprotocol/inspector
 
 `mcp-exec` follows a layered security architecture designed to isolate command execution from the MCP protocol handling.
 
+### Streamable HTTP Transport (Recommended)
+- Implements Streamable HTTP Server spec for MCP.
+- Supports optional Bearer token authentication via `Authorization` header.
+- Includes `/health` endpoint for load balancer and orchestration checks.
+- Graceful shutdown via SIGINT/SIGTERM handling with `CancellationToken`.
+
 ### Stdio Transport
 - Direct pipe communication between client and server.
 - Minimal overhead, suitable for local agents.
 - Inherits parent process environment and permissions.
 - Terminates when stdin is closed.
 
-### HTTP Transport
-- Implements Streamable HTTP Server spec for MCP.
-- Supports optional Bearer token authentication.
-- Includes `/health` endpoint for load balancer checks.
-
 ### Core Features
 - **Security Layer**: Validates arguments against injection patterns and path traversal attempts.
+  - Recursive URL-decoding protection (prevents `%252e%252e` → `..` attacks)
+  - Unicode normalization (NFC/NFD) to block homoglyph bypasses
+  - Contextual shell metacharacter filtering
 - **Execution Engine**: Spawns processes with timeout enforcement and output capture.
 - **Rate Limiter**: Token bucket algorithm to prevent abuse.
 - **Circuit Breaker**: Opens circuit after threshold failures to protect stability.
 - **Audit System**: Logs all invocations with sensitive data masking.
+
+## Advanced Security Features
+
+### URL Encoding Protection
+The server recursively decodes URL-encoded input (up to 5 iterations) to detect and block encoded path traversal attempts like `%252e%252e%252f` (triple-encoded `../`).
+
+### Unicode Normalization
+Input is normalized to both NFC and NFD forms to prevent bypasses using Unicode homoglyphs or combining characters.
+
+### Context-Aware Validation
+- Path placeholders (`{path}`, `{file}`, etc.) allow quoted metacharacters for legitimate use cases.
+- Non-path placeholders strictly block shell metacharacters outside quotes.
+- Flag placeholders (`*_flag`) permit safe single-dash options while still blocking dangerous patterns like `-v`, `-x`, `--exec`, etc.
 
 ## Troubleshooting
 
@@ -334,12 +416,13 @@ MCP_EXEC_LOG_LEVEL=trace mcp-exec --cmd 'test|"echo test"'
 
 ### Verify Binary Availability
 - **Check PATH**: `which <binary>` or `echo $PATH`
-- **Allow Missing**: Use `--allow-missing-binaries` for testing
+- **Allow Missing**: Use `--allow-missing-binaries` for testing (defers check to runtime)
 
-### Health Check Failure
+### Health Check Failure (HTTP Mode)
 - **Verify Binding**: Ensure `--bind` address is accessible from the checker.
 - **Check Logs**: Review stdout/stderr for startup errors like `FATAL: Binary not found`.
 - **Firewall**: Confirm port 3344 (or custom bind) is not blocked by host firewall.
+- **Authentication**: If `MCP_EXEC_AUTH_TOKEN` is set, include `Authorization: Bearer <token>` in requests.
 
 ## Security
 
@@ -348,3 +431,7 @@ MCP_EXEC_LOG_LEVEL=trace mcp-exec --cmd 'test|"echo test"'
 - Never use `--allow-dangerous` unless you fully understand the risks.
 - Always use `--base-path` when exposing file operations.
 - Enable `MCP_EXEC_AUTH_TOKEN` for HTTP transport.
+- **Blacklist matching is case-insensitive**: `RM`, `Sudo`, and `baSh` are blocked just like their lowercase forms.
+- **`--allow-missing-binaries` defers security checks**: A command may pass startup validation but fail at runtime if the binary is missing or has been replaced.
+- **Audit logs redact sensitive data**: Arguments matching `MCP_EXEC_SENSITIVE_KEYS` are masked as `[REDACTED]`.
+- **Dangerous flags are always blocked**: Even with `*_flag` placeholders, flags like `-v`, `-x`, `-e`, `--exec`, etc. are rejected regardless of context.
