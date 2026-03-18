@@ -14,7 +14,6 @@
 
       mcp-exec = naerskLib.buildPackage {
         src = ./.;
-        buildInputs = with pkgs; [ openssl ];
         nativeBuildInputs = [ pkgs.pkg-config ];
       };
     in {
@@ -26,7 +25,6 @@
         buildInputs = with pkgs; [
           fish
           cargo rustc rustfmt clippy rust-analyzer
-          openssl
         ];
         nativeBuildInputs = [ pkgs.pkg-config ];
 
