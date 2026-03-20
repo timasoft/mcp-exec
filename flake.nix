@@ -6,7 +6,10 @@
   };
 
   outputs = { self, nixpkgs, naersk, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  let
+    baseModule = import ./nixos/mcp-secure-exec.nix;
+  in
+  flake-utils.lib.eachDefaultSystem (system:
     let
       pkgs = import nixpkgs { inherit system; };
       naerskLib = pkgs.callPackage naersk {};
@@ -22,15 +25,6 @@
 
       defaultPackage = mcp-secure-exec;
 
-      nixosModules.mcp-secure-exec-base = import ./nixos/mcp-secure-exec.nix;
-
-      nixosModules.mcp-secure-exec = { config, lib, pkgs, ... }: {
-        imports = [ ./nixos/mcp-secure-exec.nix ];
-        services.mcp-secure-exec.package = lib.mkDefault self.packages.${pkgs.system}.default;
-      };
-
-      nixosModule = self.nixosModules.mcp-secure-exec;
-
       devShells.default = pkgs.mkShell {
         buildInputs = with pkgs; [
           fish
@@ -45,9 +39,12 @@
         env.RUST_SRC_PATH = "${rustSrc}";
       };
     }) // {
-      nixosModules.mcp-secure-exec-base = import ./nixos/mcp-secure-exec.nix;
+      nixosModules.mcp-secure-exec-base = baseModule;
       nixosModules.mcp-secure-exec = { config, lib, pkgs, ... }: {
-        imports = [ ./nixos/mcp-secure-exec.nix ];
+        imports = [ baseModule ];
+        services.mcp-secure-exec.package = lib.mkDefault (self.packages.${pkgs.system}.default);
       };
+
+      nixosModule = self.nixosModules.mcp-secure-exec;
     };
 }
