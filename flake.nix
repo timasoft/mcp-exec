@@ -22,10 +22,14 @@
 
       defaultPackage = mcp-secure-exec;
 
-      nixosModules.default = import ./nixos/mcp-secure-exec.nix;
-      nixosModules.mcp-secure-exec = self.nixosModules.default;
+      nixosModules.mcp-secure-exec-base = import ./nixos/mcp-secure-exec.nix;
 
-      nixosModule = self.nixosModules.default;
+      nixosModules.mcp-secure-exec = { config, lib, pkgs, ... }: {
+        imports = [ ./nixos/mcp-secure-exec.nix ];
+        services.mcp-secure-exec.package = lib.mkDefault self.packages.${pkgs.system}.default;
+      };
+
+      nixosModule = self.nixosModules.mcp-secure-exec;
 
       devShells.default = pkgs.mkShell {
         buildInputs = with pkgs; [
@@ -33,17 +37,17 @@
           cargo rustc rustfmt clippy rust-analyzer
         ];
         nativeBuildInputs = [ pkgs.pkg-config ];
-
         shellHook = ''
           if [ -z "$FISH_VERSION" ] && [ -z "$NO_AUTO_FISH" ]; then
             exec ${pkgs.fish}/bin/fish
           fi
         '';
-
         env.RUST_SRC_PATH = "${rustSrc}";
       };
     }) // {
-      nixosModules.default = import ./nixos/mcp-secure-exec.nix;
-      nixosModules.mcp-secure-exec = self.nixosModules.default;
+      nixosModules.mcp-secure-exec-base = import ./nixos/mcp-secure-exec.nix;
+      nixosModules.mcp-secure-exec = { config, lib, pkgs, ... }: {
+        imports = [ ./nixos/mcp-secure-exec.nix ];
+      };
     };
 }

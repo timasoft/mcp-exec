@@ -89,10 +89,23 @@ in
     enable = mkEnableOption "Enable mcp-secure-exec MCP server service";
 
     package = mkOption {
-      type = types.package;
-      default = pkgs.mcp-secure-exec;
-      defaultText = literalMD "`pkgs.mcp-secure-exec`";
-      description = "The mcp-secure-exec package to use.";
+      type = types.nullOr types.package;
+      default = null;
+      description = ''
+        The mcp-secure-exec package to use.
+        If null (default), set explicitly: package = inputs.mcp-secure-exec.packages.${pkgs.system}.default;
+      '';
+    };
+
+    extraPackages = mkOption {
+      type = types.listOf types.package;
+      default = [ ];
+      example = literalMD "with pkgs; [ bat git fd ripgrep exa ]";
+      description = ''
+        Packages to add to the service PATH using NixOS-native mechanism.
+        Binaries from these packages will be available in command templates
+        without absolute paths or manual PATH configuration.
+      '';
     };
 
     commands = mkOption {
@@ -270,6 +283,18 @@ in
 
   config = mkIf cfg.enable (mkMerge [
     {
+      assertions = [
+        {
+          assertion = cfg.package != null;
+          message = ''
+            services.mcp-secure-exec.package must be set when enable = true.
+            Example: package = inputs.mcp-secure-exec.packages.${pkgs.system}.default;
+          '';
+        }
+      ];
+    }
+
+    {
       users.users.${cfg.user} = {
         inherit (cfg) group;
         isSystemUser = true;
@@ -287,6 +312,8 @@ in
           after = [ "network.target" ];
           wants = mkIf (cfg.transport == "streamable-http") [ "network-online.target" ];
           wantedBy = [ "multi-user.target" ];
+
+          path = cfg.extraPackages;
 
           environment = mkEnvVars;
 
@@ -319,12 +346,6 @@ in
               LockPersonality = true;
 
               # SystemCallFilter for async Rust (Tokio) + process spawning
-              # @system-service: base set for typical services
-              # @io-event: epoll, eventfd, timerfd (required by Tokio runtime)
-              # @sync: futex, etc. (required for async primitives)
-              # @network-io: socket operations (for streamable-http transport)
-              # @process: fork, execve (required for spawning commands)
-              # ~@privileged, ~@resources, ~@mount: block dangerous syscalls
               SystemCallFilter = [
                 "@system-service"
                 "@io-event"
