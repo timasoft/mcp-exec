@@ -18,8 +18,14 @@
       };
     in {
       packages.default = mcp-secure-exec;
+      packages.mcp-secure-exec = mcp-secure-exec;
 
       defaultPackage = mcp-secure-exec;
+
+      nixosModules.default = import ./nixos/mcp-secure-exec.nix;
+      nixosModules.mcp-secure-exec = self.nixosModules.default;
+
+      nixosModule = self.nixosModules.default;
 
       devShells.default = pkgs.mkShell {
         buildInputs = with pkgs; [
@@ -36,5 +42,8 @@
 
         env.RUST_SRC_PATH = "${rustSrc}";
       };
-    });
+    }) // {
+      nixosModules.default = import ./nixos/mcp-secure-exec.nix;
+      nixosModules.mcp-secure-exec = self.nixosModules.default;
+    };
 }
