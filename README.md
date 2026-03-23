@@ -31,7 +31,7 @@ The server supports two primary transport mechanisms for MCP communication:
 ```yaml
 services:
   mcp-secure-exec:
-    image: timasoft/mcp-secure-exec:0.1.0
+    image: timasoft/mcp-secure-exec:0.1.1
     container_name: mcp-secure-exec
     restart: unless-stopped
     environment:

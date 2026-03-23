@@ -41,7 +41,7 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 
 LABEL org.opencontainers.image.source="https://github.com/timasoft/mcp-secure-exec"
 LABEL org.opencontainers.image.description="MCP server for executing user-defined shell commands via templates"
-LABEL org.opencontainers.image.version="0.1.0"
+LABEL org.opencontainers.image.version="0.1.1"
 LABEL org.opencontainers.image.authors="timasoft"
 
 USER appuser

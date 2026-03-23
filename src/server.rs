@@ -163,7 +163,7 @@ impl ServerHandler for ExecServer {
                 serde_json::from_value(json!({
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "serverInfo": { "name": "mcp-secure-exec", "version": "0.1.0" },
+                    "serverInfo": { "name": "mcp-secure-exec", "version": "0.1.1" },
                     "instructions": null
                 }))
                 .unwrap_or_else(|fallback_err| {
