@@ -74,35 +74,107 @@ docker-compose logs -f mcp-secure-exec
 curl http://127.0.0.1:3344/health
 ```
 
-### Nix
+### NixOS Module (Recommended for NixOS users)
 
-If you're using Nix or NixOS, you can build and run the application directly:
+The project provides a fully-featured NixOS module with declarative configuration, systemd sandboxing, and automatic package management.
 
-**Streamable HTTP mode (recommended for remote/server use):**
-```bash
-nix run github:timasoft/mcp-secure-exec -- \
-  --cmd 'status|"systemctl status {service}"' \
-  --transport streamable-http \
-  --bind 127.0.0.1:3344 \
-  --auth-token your_secret_token
+#### Flake Integration
+
+Add the flake input to your `flake.nix`:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    mcp-secure-exec.url = "github:timasoft/mcp-secure-exec";
+  };
+
+  outputs = { self, nixpkgs, mcp-secure-exec, ... }: {
+    nixosConfigurations.your-host = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ./configuration.nix
+        mcp-secure-exec.nixosModules.mcp-secure-exec
+      ];
+    };
+  };
+}
 ```
 
-**Stdio mode (for local MCP clients like Claude Desktop):**
-```bash
-nix run github:timasoft/mcp-secure-exec -- \
-  --cmd 'echo|"echo {message}"' \
-  --cmd 'date|"date"' \
-  --transport stdio
+Then enable and configure the service in your NixOS configuration:
+
+```nix
+{ config, lib, pkgs, ... }:
+
+{
+  services.mcp-secure-exec = {
+    enable = true;
+
+    # Transport: stdio (local) or streamable-http (remote)
+    transport = "streamable-http";
+    bind = "127.0.0.1:3344";  # Use 0.0.0.0 for external access (configure firewall)
+
+    # Command templates: name + shell command with {placeholder} arguments
+    commands = [
+      { name = "read-file"; template = "bat {path}"; }
+      { name = "list"; template = "eza -la {path}"; }
+      { name = "find"; template = "fd {regex} {path} --type f"; }
+    ];
+
+    # Make binaries available in the service PATH
+    extraPackages = with pkgs; [ bat eza fd ripgrep procps coreutils ];
+
+    # Filesystem isolation: systemd enforces read-only except basePath
+    restrictFilesystem = true;
+    basePath = "/home/youruser";  # Writable directory for path-like arguments
+
+    # Optional: allow access to /home if basePath is under it
+    protectHome = false;
+
+    # Security: blacklist dangerous binaries (case-insensitive)
+    blacklist = [ "rm" "dd" "mkfs" "sudo" "bash" "python3" ];
+
+    # Performance tuning
+    cmdTimeoutSecs = 30;
+    rateLimitRps = 10;
+    maxConcurrent = 50;
+
+    # Logging
+    logLevel = "info";
+    sensitiveKeys = [ "password" "token" "secret" ];
+  };
+
+  # Ensure basePath is writable
+  systemd.tmpfiles.rules = [
+    "z /home/youruser 0755 youruser users -"
+  ];
+}
 ```
 
-**With path restrictions and security hardening:**
-```bash
-nix run github:timasoft/mcp-secure-exec -- \
-  --cmd 'cat|"cat {path}"' \
-  --base-path /home/user \
-  --cmd-timeout 10 \
-  --log-level debug
-```
+#### Key Module Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | bool | `false` | Enable the service |
+| `transport` | enum | `"stdio"` | `stdio` or `streamable-http` |
+| `bind` | string | `"127.0.0.1:3344"` | Bind address for HTTP transport |
+| `commands` | list of `{name, template}` | `[]` | Registered command templates |
+| `extraPackages` | list of packages | `[]` | Packages to add to service `PATH` |
+| `restrictFilesystem` | bool | `false` | Enable systemd filesystem sandboxing |
+| `basePath` | path or null | `null` | Base directory for path validation / writable path |
+| `protectHome` | bool | `false` | Block access to `/home`, `/root`, `/run/user` |
+| `blacklist` | list of strings | [see module] | Binaries to block by name |
+| `allowDangerous` | bool | `false` | Permit blacklisted binaries (⚠️) |
+| `validatePaths` | bool | `true` | Enable path traversal protection |
+| `authTokenFile` | path or null | `null` | File containing HTTP bearer token |
+| `cmdTimeoutSecs` | int | `30` | Max command execution time |
+| `rateLimitRps` / `rateLimitBurst` | int | `10` / `20` | Token bucket rate limiter |
+| `maxConcurrent` | int | `50` | Max parallel command executions |
+| `logLevel` | enum | `"info"` | `error`, `warn`, `info`, `debug`, `trace` |
+| `sensitiveKeys` | list of strings | `[password,token,...]` | Argument names to redact in logs |
+| `extraArgs` | list of strings | `[]` | Additional CLI flags to pass |
+
+> 💡 **restrictFilesystem behavior**: When enabled, systemd enforces `ProtectSystem=strict` (read-only root). Only `basePath` (if set) is added to `ReadWritePaths`. The `--base-path` flag is **not** passed to the binary — filesystem access is controlled entirely by systemd.
 
 ### From Source
 
