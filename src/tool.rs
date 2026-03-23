@@ -18,7 +18,8 @@ pub const MAX_ARG_LENGTH: usize = 64 * 1024;
 pub const MAX_ARGS_COUNT: usize = 256;
 
 const SHELL_METACHARACTERS: &[char] = &[';', '|', '&', '`', '(', ')', '<', '>', '\n', '\r', '\\'];
-const DANGEROUS_FOR_ALL: &[char] = &[';', '|', '&', '`', '(', ')', '<', '>', '\n', '\r'];
+const DANGEROUS_FOR_NON_REGEX: &[char] = &[';', '|', '&', '`', '(', ')', '<', '>', '\n', '\r'];
+const DANGEROUS_FOR_ALL: &[char] = &[';', '&', '`', '<', '>', '\n', '\r'];
 
 const DANGEROUS_ARG_PATTERNS: &[&str] = &[
     "-exec",
@@ -377,9 +378,15 @@ impl CmdTool {
         let mut required = Vec::new();
 
         for ph in &self.def.all_placeholders {
+            let is_regex = is_regex_placeholder(ph);
+            let description = if is_regex {
+                format!("Regex pattern for {{{ph}}} (regex metacharacters allowed)")
+            } else {
+                format!("Value for {{{ph}}}")
+            };
             props.insert(
                 ph.clone(),
-                json!({ "type": "string", "description": format!("Value for {{{ph}}}") }),
+                json!({ "type": "string", "description": description }),
             );
             required.push(ph.clone());
         }
@@ -559,6 +566,16 @@ impl CmdTool {
 // Validation Functions
 // =============================================================================
 
+/// Check if a placeholder is designated for regex patterns
+pub fn is_regex_placeholder(placeholder: &str) -> bool {
+    placeholder == "regex"
+        || placeholder == "pattern"
+        || placeholder == "regexp"
+        || placeholder.ends_with("_regex")
+        || placeholder.ends_with("_pattern")
+        || placeholder.ends_with("_regexp")
+}
+
 pub fn normalize_path_lexical(path: &Path) -> PathBuf {
     let mut result = PathBuf::new();
     for comp in path.components() {
@@ -672,28 +689,164 @@ pub fn validate_shell_metachar_contextual(
     placeholder: &str,
 ) -> Result<(), RuntimeError> {
     let is_path_placeholder = matches!(placeholder, "path" | "file" | "dir" | "filepath");
+    let is_regex_param = is_regex_placeholder(placeholder);
 
     for (i, c) in value.chars().enumerate() {
         if is_inside_quotes(value, i) {
             continue;
         }
-        if DANGEROUS_FOR_ALL.contains(&c) {
-            warn!(target: "audit", event = "injection_attempt", placeholder = %placeholder);
-            return Err(RuntimeError::InvalidArgument(
-                placeholder.into(),
-                "contains dangerous shell metacharacters".into(),
-            ));
-        }
-        if !is_path_placeholder && SHELL_METACHARACTERS.contains(&c) {
-            return Err(RuntimeError::InvalidArgument(
-                placeholder.into(),
-                "contains shell metacharacters".into(),
-            ));
+
+        if is_regex_param {
+            // For regex parameters, use softer validation
+            // Allow regex metacharacters: | ( ) but block truly dangerous ones
+            if DANGEROUS_FOR_ALL.contains(&c) {
+                warn!(target: "audit", event = "injection_attempt", placeholder = %placeholder);
+                return Err(RuntimeError::InvalidArgument(
+                    placeholder.into(),
+                    "contains dangerous shell metacharacters".into(),
+                ));
+            }
+            // Allow escaped characters in regex
+            if c == '\\' && i + 1 < value.len() {
+                continue;
+            }
+        } else {
+            // Non-regex parameters: strict validation
+            if DANGEROUS_FOR_NON_REGEX.contains(&c) {
+                warn!(target: "audit", event = "injection_attempt", placeholder = %placeholder);
+                return Err(RuntimeError::InvalidArgument(
+                    placeholder.into(),
+                    "contains dangerous shell metacharacters".into(),
+                ));
+            }
+            if !is_path_placeholder && SHELL_METACHARACTERS.contains(&c) {
+                return Err(RuntimeError::InvalidArgument(
+                    placeholder.into(),
+                    "contains shell metacharacters".into(),
+                ));
+            }
         }
     }
     Ok(())
 }
 
+/// Validate regex-specific patterns (softer validation for regex parameters)
+pub fn validate_regex_param(value: &str, placeholder: &str) -> Result<(), RuntimeError> {
+    // Still check for dangerous patterns even in regex
+    validate_dangerous_patterns(value, placeholder)?;
+
+    // Check for null bytes
+    if value.contains('\0') {
+        return Err(RuntimeError::InvalidArgument(
+            placeholder.into(),
+            "contains null byte".into(),
+        ));
+    }
+
+    // Check for encoded traversal patterns
+    if value.contains("%2e")
+        || value.contains("%2E")
+        || value.contains("%2f")
+        || value.contains("%2F")
+    {
+        warn!(target: "audit", event = "encoded_traversal_attempt", placeholder = %placeholder);
+        return Err(RuntimeError::InvalidArgument(
+            placeholder.into(),
+            "contains encoded path traversal characters".into(),
+        ));
+    }
+
+    // Decode and check for path traversal
+    let decoded = urlencoding_decode_recursive(value);
+    let (normalized_nfc, normalized_nfd) = normalize_unicode_both(&decoded);
+    for normalized in [&normalized_nfc, &normalized_nfd] {
+        // Block path traversal even in regex
+        if contains_path_traversal_chars(normalized) {
+            warn!(target: "audit", event = "injection_attempt", placeholder = %placeholder);
+            return Err(RuntimeError::InvalidArgument(
+                placeholder.into(),
+                "contains dangerous characters".into(),
+            ));
+        }
+
+        // Block command injection at start - but allow regex metacharacters
+        // For regex, only block truly dangerous chars, not | ( )
+        if let Some(first_char) = normalized.chars().next()
+            && DANGEROUS_FOR_ALL.contains(&first_char)
+        {
+            return Err(RuntimeError::InvalidArgument(
+                placeholder.into(),
+                "starts with dangerous character".into(),
+            ));
+        }
+    }
+
+    // Validate shell metacharacters with regex-aware logic
+    validate_shell_metachar_contextual(&normalized_nfc, placeholder)?;
+
+    // Check for unbalanced brackets/parentheses (basic regex syntax check)
+    if !check_balanced_brackets(&normalized_nfc) {
+        warn!(target: "audit", event = "unbalanced_regex", placeholder = %placeholder);
+        return Err(RuntimeError::InvalidArgument(
+            placeholder.into(),
+            "unbalanced brackets/parentheses in regex".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Check if brackets and parentheses are balanced
+fn check_balanced_brackets(s: &str) -> bool {
+    let mut stack = Vec::new();
+    let mut in_escape = false;
+    let mut in_char_class = false;
+
+    for c in s.chars() {
+        if in_escape {
+            in_escape = false;
+            continue;
+        }
+
+        if c == '\\' {
+            in_escape = true;
+            continue;
+        }
+
+        if c == '[' && !in_char_class {
+            in_char_class = true;
+            continue;
+        }
+
+        if c == ']' && in_char_class {
+            in_char_class = false;
+            continue;
+        }
+
+        if in_char_class {
+            continue;
+        }
+
+        match c {
+            '(' | '{' | '[' => stack.push(c),
+            ')' => {
+                if stack.pop() != Some('(') {
+                    return false;
+                }
+            }
+            '}' => {
+                if stack.pop() != Some('{') {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    stack.is_empty() && !in_char_class
+}
+
+/// Safe canonicalization that handles non-existent paths
 fn safe_canonicalize(path: &Path) -> std::io::Result<PathBuf> {
     if path.exists() {
         std::fs::canonicalize(path)
@@ -725,6 +878,12 @@ pub fn validate_placeholder_value(value: &str, placeholder: &str) -> Result<(), 
         ));
     }
 
+    // Use regex-specific validation for regex parameters
+    if is_regex_placeholder(placeholder) {
+        return validate_regex_param(value, placeholder);
+    }
+
+    // Standard validation for non-regex parameters
     validate_dangerous_patterns(value, placeholder)?;
 
     // Check for encoded traversal patterns BEFORE decoding
@@ -811,7 +970,7 @@ pub fn validate_path_secure(input: &str, base_path: Option<&Path>) -> Result<(),
         }
         if normalized
             .chars()
-            .any(|c| DANGEROUS_FOR_ALL.contains(&c) || SHELL_METACHARACTERS.contains(&c))
+            .any(|c| DANGEROUS_FOR_NON_REGEX.contains(&c) || SHELL_METACHARACTERS.contains(&c))
         {
             warn!(target: "audit", event = "traversal_attempt");
             return Err(RuntimeError::PathTraversal(
@@ -1071,6 +1230,63 @@ mod tests {
         values.insert("last".to_string(), "Doe".to_string());
         let result = template.build(&values).unwrap();
         assert_eq!(result, "John_Doe");
+    }
+
+    // =============================================================================
+    // Regex Parameter Tests (NEW)
+    // =============================================================================
+
+    #[test]
+    fn test_is_regex_placeholder() {
+        assert!(is_regex_placeholder("regex"));
+        assert!(is_regex_placeholder("pattern"));
+        assert!(is_regex_placeholder("regexp"));
+        assert!(is_regex_placeholder("pattern_regex"));
+        assert!(is_regex_placeholder("filter_pattern"));
+        assert!(is_regex_placeholder("search_regexp"));
+        assert!(!is_regex_placeholder("message"));
+        assert!(!is_regex_placeholder("path"));
+    }
+
+    #[test]
+    fn test_validate_regex_param_allows_metacharacters() {
+        // Regex metacharacters should be allowed in regex params
+        let result = validate_placeholder_value(".*", "pattern_regex");
+        assert!(result.is_ok());
+
+        let result = validate_placeholder_value("[a-z]+", "filter_regex");
+        assert!(result.is_ok());
+
+        let result = validate_placeholder_value("(foo|bar)", "search_pattern");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_regex_param_blocks_dangerous() {
+        // Dangerous patterns should still be blocked
+        let result = validate_placeholder_value("-exec rm", "pattern_regex");
+        assert!(result.is_err());
+
+        let result = validate_placeholder_value(";rm -rf", "filter_regex");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_regex_param_blocks_traversal() {
+        // Path traversal should still be blocked
+        let result = validate_placeholder_value("../etc", "pattern_regex");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_regex_param_balanced_brackets() {
+        // Balanced brackets should pass
+        let result = validate_placeholder_value("[a-z]", "pattern_regex");
+        assert!(result.is_ok());
+
+        // Unbalanced should fail
+        let result = validate_placeholder_value("[a-z", "pattern_regex");
+        assert!(result.is_err());
     }
 
     // =============================================================================
@@ -1529,5 +1745,32 @@ mod tests {
         let resolver = Arc::new(MockResolver);
         let result = resolver.resolve("test");
         assert_eq!(result, Some(PathBuf::from("/mock/binary")));
+    }
+
+    // =============================================================================
+    // Balanced Brackets Tests
+    // =============================================================================
+
+    #[test]
+    fn test_check_balanced_brackets_valid() {
+        assert!(check_balanced_brackets("(foo)"));
+        assert!(check_balanced_brackets("[a-z]"));
+        assert!(check_balanced_brackets("{1,3}"));
+        assert!(check_balanced_brackets("(foo|bar)"));
+        assert!(check_balanced_brackets("[a-z]+(test)?"));
+    }
+
+    #[test]
+    fn test_check_balanced_brackets_invalid() {
+        assert!(!check_balanced_brackets("(foo"));
+        assert!(!check_balanced_brackets("[a-z"));
+        assert!(!check_balanced_brackets("{1,3"));
+        assert!(!check_balanced_brackets("(foo|bar"));
+    }
+
+    #[test]
+    fn test_check_balanced_brackets_escaped() {
+        assert!(check_balanced_brackets("\\[a-z\\]"));
+        assert!(check_balanced_brackets("\\(foo\\)"));
     }
 }
