@@ -441,9 +441,7 @@ in
         description = "System user for mcp-secure-exec service";
       };
 
-      users.groups.${cfg.group} = {
-        description = "System group for mcp-secure-exec service";
-      };
+      users.groups.${cfg.group} = { };
 
       systemd.services.mcp-secure-exec =
         let
