@@ -1,7 +1,7 @@
 use crate::{
     config::{SecurityConfig, ServerLimits},
     error::{RuntimeError, StartupError},
-    tool::{CmdTool, CommandDef, mask_sensitive_args},
+    tool::{CmdTool, CommandDef, is_regex_placeholder, mask_sensitive_args},
 };
 use governor::{
     Quota, RateLimiter,
@@ -253,7 +253,16 @@ impl ServerHandler for ExecServer {
         let params: crate::tool::DynParams = serde_json::from_value(Value::Object(args))
             .map_err(|e| McpError::invalid_params(format!("Bad args: {e}"), None))?;
 
+        // Log with regex parameter awareness
         let logged = mask_sensitive_args(&params.values, &self.sensitive_keys);
+        let regex_params: Vec<&String> = params
+            .values
+            .keys()
+            .filter(|k| is_regex_placeholder(k))
+            .collect();
+        if !regex_params.is_empty() {
+            info!(target: "audit", tool = %request.name, regex_params = ?regex_params, "regex parameters detected");
+        }
         info!(target: "audit", tool = %request.name, args = ?logged, "invoked");
 
         match tool.run(&params).await {

@@ -16,11 +16,12 @@ The server supports two primary transport mechanisms for MCP communication:
 ## Features
 
 - **Command Templating Engine**: Define safe command structures with named placeholders for arguments.
+- **Regex Parameter Support**: Designate placeholders for regex patterns with relaxed validation for metacharacters like `|`, `(`, `)` while maintaining security boundaries.
 - **Strict Input Validation**: Prevents path traversal, shell injection, and dangerous pattern usage.
 - **Multi-Transport Support**: Seamlessly switch between Stdio and Streamable HTTP transports.
 - **Rate Limiting & Concurrency Control**: Protects resources with configurable request limits and concurrent execution caps.
 - **Circuit Breaker Protection**: Automatically halts execution during repeated failures to prevent cascading errors.
-- **Comprehensive Audit Logging**: Tracks command invocations and security events with redacted sensitive data.
+- **Comprehensive Audit Logging**: Tracks command invocations and security events with redacted sensitive data, including regex parameter detection.
 - **Graceful Shutdown**: Handles SIGINT/SIGTERM for clean termination.
 
 ## Installation
@@ -329,6 +330,7 @@ Placeholder names in command templates trigger specific validation behaviors:
 |--------------------|--------|---------|
 | `path`, `file`, `dir`, `filepath` | Enables path traversal protection; requires `--base-path` for relative paths | `{path}`, `{file}` |
 | `*_flag`, `*_opt` | Allows safe single-dash flags like `-h`; dangerous flags (e.g., `-v`, `-x`, `-e`) are blocked regardless | `{verbose_flag}` → `-h` OK, `-v` rejected |
+| `regex`, `pattern`, `regexp`, `*_regex`, `*_pattern`, `*_regexp` | **Regex mode**: Allows regex metacharacters `|`, `(`, `)` while still blocking dangerous shell chars (`;`, `&`, `` ` ``, `<`, `>`, newlines). Validates balanced brackets/parentheses. | `{pattern}` in `grep {pattern} {file}` |
 | Any other name | Blocks shell metacharacters and command-like patterns | `{message}` → `hello;rm` rejected |
 
 > 💡 **Note**: Even with `*_flag` suffix, flags listed in the dangerous patterns blacklist (like `-v`, `-x`, `-e`, `--exec`, etc.) are always blocked for security. Use only safe, non-dangerous flags with flag placeholders.
@@ -381,6 +383,24 @@ mcp-secure-exec --cmd 'echo|"echo {message}"' --log-level debug --transport stdi
 ```bash
 mcp-secure-exec --cmd 'ls|"ls -la {path}"' --base-path /home/user --transport stdio
 ```
+
+**Grep Search with Regex Pattern**
+```bash
+mcp-secure-exec \
+  --cmd 'search|"grep -E {pattern} {file}"' \
+  --base-path /home/user \
+  --transport stdio
+```
+> The `{pattern}` placeholder will accept regex syntax like `(foo|bar)`, `[a-z]+`, etc., while still blocking shell injection attempts.
+
+**Find with Pattern (using find + grep)**
+```bash
+mcp-secure-exec \
+  --cmd 'find-text|"find {path} -type f -exec grep -l {regex} {} +" 2>/dev/null"' \
+  --base-path /home/user \
+  --transport stdio
+```
+> Note: `{regex}` accepts regex metacharacters; `{path}` is validated for path traversal.
 
 **Multiple Tools Configuration**
 ```bash
@@ -456,11 +476,12 @@ npm install -g @modelcontextprotocol/inspector
 - **Security Layer**: Validates arguments against injection patterns and path traversal attempts.
   - Recursive URL-decoding protection (prevents `%252e%252e` → `..` attacks)
   - Unicode normalization (NFC/NFD) to block homoglyph bypasses
-  - Contextual shell metacharacter filtering
+  - Contextual shell metacharacter filtering with regex-aware modes
+- **Regex Parameter Handling**: Placeholders named `regex`, `pattern`, `regexp`, or ending with `*_regex`/`*_pattern`/`*_regexp` receive relaxed validation for regex metacharacters while maintaining protection against shell injection.
 - **Execution Engine**: Spawns processes with timeout enforcement and output capture.
 - **Rate Limiter**: Token bucket algorithm to prevent abuse.
 - **Circuit Breaker**: Opens circuit after threshold failures to protect stability.
-- **Audit System**: Logs all invocations with sensitive data masking.
+- **Audit System**: Logs all invocations with sensitive data masking; regex parameter usage is explicitly logged.
 
 ## Advanced Security Features
 
@@ -474,6 +495,15 @@ Input is normalized to both NFC and NFD forms to prevent bypasses using Unicode 
 - Path placeholders (`{path}`, `{file}`, etc.) allow quoted metacharacters for legitimate use cases.
 - Non-path placeholders strictly block shell metacharacters outside quotes.
 - Flag placeholders (`*_flag`) permit safe single-dash options while still blocking dangerous patterns like `-v`, `-x`, `--exec`, etc.
+- **Regex placeholders** (`regex`, `pattern`, `regexp`, `*_regex`, etc.) allow regex metacharacters `|`, `(`, `)` while blocking truly dangerous shell operators.
+
+### Regex Parameter Validation Details
+When a placeholder is identified as a regex parameter:
+1. **Allowed metacharacters**: `|`, `(`, `)`, `[`, `]`, `{`, `}`, `*`, `+`, `?`, `.`, `^`, `$`, `\`
+2. **Blocked characters**: `;`, `&`, `` ` ``, `<`, `>`, `\n`, `\r` (shell injection vectors)
+3. **Balanced bracket check**: Validates that `()`, `[]`, `{}` are properly nested (escape-aware)
+4. **Path traversal blocking**: `../`, `..\\`, and encoded variants are rejected even in regex context
+5. **Dangerous pattern blocking**: Patterns like `-exec`, `$(...)`, backticks are still rejected
 
 ## Troubleshooting
 
@@ -489,6 +519,11 @@ MCP_EXEC_LOG_LEVEL=trace mcp-secure-exec --cmd 'test|"echo test"'
 ### Verify Binary Availability
 - **Check PATH**: `which <binary>` or `echo $PATH`
 - **Allow Missing**: Use `--allow-missing-binaries` for testing (defers check to runtime)
+
+### Regex Parameter Not Working?
+- Ensure placeholder name matches: `regex`, `pattern`, `regexp`, `*_regex`, `*_pattern`, or `*_regexp`
+- Check audit logs for `regex_params` field to confirm detection
+- Verify balanced brackets/parentheses in your regex pattern
 
 ### Health Check Failure (HTTP Mode)
 - **Verify Binding**: Ensure `--bind` address is accessible from the checker.
@@ -507,3 +542,4 @@ MCP_EXEC_LOG_LEVEL=trace mcp-secure-exec --cmd 'test|"echo test"'
 - **`--allow-missing-binaries` defers security checks**: A command may pass startup validation but fail at runtime if the binary is missing or has been replaced.
 - **Audit logs redact sensitive data**: Arguments matching `MCP_EXEC_SENSITIVE_KEYS` are masked as `[REDACTED]`.
 - **Dangerous flags are always blocked**: Even with `*_flag` placeholders, flags like `-v`, `-x`, `-e`, `--exec`, etc. are rejected regardless of context.
+- **Regex placeholders are not a bypass**: While regex metacharacters are allowed, shell injection vectors (`;`, `&`, `` ` ``, etc.) and path traversal are still blocked.
