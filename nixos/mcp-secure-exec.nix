@@ -526,18 +526,18 @@ in
 
     (mkIf (cfg.restrictFilesystem && cfg.basePath == null) {
       warnings = [
-        "services.mcp-secure-exec.restrictFilesystem is enabled but basePath is not set. " +
+        ("services.mcp-secure-exec.restrictFilesystem is enabled but basePath is not set. " +
         "The service will have read-only access to the entire filesystem (except /tmp). " +
         "Commands requiring write access will fail unless they operate on /tmp or other naturally writable paths. " +
-        "Consider setting basePath to a dedicated writable directory."
+        "Consider setting basePath to a dedicated writable directory.")
       ];
     })
 
     (mkIf (cfg.protectHome && cfg.basePath != null && lib.hasPrefix "/home" (toString cfg.basePath)) {
       warnings = [
-        "services.mcp-secure-exec.protectHome is enabled but basePath points to ${toString cfg.basePath}. " +
+        ("services.mcp-secure-exec.protectHome is enabled but basePath points to ${toString cfg.basePath}. " +
         "Due to systemd's ProtectHome=true, the service will NOT be able to access this path. " +
-        "Either disable protectHome, move basePath outside /home, or use a bind mount to expose a subdirectory."
+        "Either disable protectHome, move basePath outside /home, or use a bind mount to expose a subdirectory.")
       ];
     })
   ]);
