@@ -10,7 +10,7 @@ keywords = ["mcp", "exec", "shell", "cli", "automation"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
-rmcp = { version = "1.2.0", features = [
+rmcp = { version = "1.6.0", features = [
     "server",
     "transport-streamable-http-server",
 ] }
